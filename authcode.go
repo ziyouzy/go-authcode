@@ -255,3 +255,10 @@ func (p *AuthCode)kangSheng(raw []byte,cryptKey []byte)[]byte{
 	
 	return append([]byte{},p.bytesHandler.Bytes()...)
 }
+
+//不知道存不存在安全性问题，不过还是实现了如下方法
+func (p *AuthCode)CloseSafe(){
+	p.key ="";		p.lengthKeyC =0;		p.expirySec =0
+	p.isWeb =false;	
+	p.bytesHandler.Reset();		p.bytesHandler=bytes.NewBuffer([]byte{})
+}
