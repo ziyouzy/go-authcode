@@ -132,3 +132,20 @@ func TestMd5(t *testing.T){
 	sRaw :=string(bRaw)
 	fmt.Println(Md5_String2Hexstring(sRaw),"len is:",len(Md5_String2Hexstring(sRaw)))
 }
+
+func TestKeyDynamic(t *testing.T){
+	keyDynamic :=make([]byte,8)
+	keyDynamic =nil
+	
+	keyA :=[]byte{0x01,0x02,0x03}
+
+	keyB := append([]byte{},keyDynamic...)
+
+	keyC := append(keyA,keyDynamic...)
+
+	fmt.Println("keyB:",keyB)
+	fmt.Println("keyC:",keyC)
+
+	fmt.Println("keyA:",keyA[:0])
+	fmt.Println("keyA:",keyA[2:])
+}

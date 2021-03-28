@@ -3,35 +3,43 @@ package go_authcode
 import (
 	"fmt"
 	"testing"	
+	"time"
+	//"bytes"
 
 )
 
 func TestAuthcode(t *testing.T) {
-	if ac ,err:=New("fs06jdlsjflkdjslksjfllkdsg",1,0,true);err !=nil{
-		fmt.Println(err)
-		ac.CloseSafe()
-	}else{
-		//en ,err1 :=ac.Encode(nil,"1234567890abcdefaaaaaa//***/+++____")
-		en ,err1 :=ac.Encode([]byte("1234567890abcdefaaaaaa//***/+++____"),"")
+	isWeb :=true
+	ac :=New(";;;$#@%$!@%^&*(fs06jdlsjflkdjslklfskdfksjf;;;;llkdsg;;;",4,20,isWeb)
+	for {
+
+		//en ,err1 :=ac.Encode(nil,"1234567890akdl;sdkv;sldbcdefaaaaaa//***/+++____")
+		en ,err1 :=ac.Encode([]byte(";12jjlczj;;;sldjfla;;;aa___////*&**&+++++l34567890faakldjf;;;;sldjfla;;;aa___////*&**&+++++a"),"")
 		if err1 !=nil{
 			fmt.Println("err1:",err1)
-			ac.CloseSafe()
+			break
 		}else{
-			fmt.Println("en:",en)
-			fmt.Println("en-str:",string(en))
+			_ =en
+			//fmt.Println("en:",en)
+			//fmt.Println("en-str:",string(en))
 		}
 
-		//de ,err2 :=ac.Decode(en,"")
-		de ,err2 :=ac.Decode(nil,string(en))
+		if isWeb{
+			fmt.Println([]byte("_")/*95*/, []byte("/")/*47*/,[]byte("-")/*45*/, []byte("+")/*43*/)
+		}
+
+		de ,err2 :=ac.Decode(en,"")
+		//de ,err2 :=ac.Decode(nil,string(en))
 		if err2 !=nil{
 			fmt.Println("err2",err2)
-			ac.CloseSafe()
+			break
 		}else{
-			fmt.Println("de",string(de))
+			//fmt.Println("de",string(de))
+			_ =de
 		}
 
-		ac.CloseSafe()
+		time.Sleep(50*time.Millisecond)
 	}
-
-	
+	fmt.Println(time.Now())
+	ac.CloseSafe()
 }

@@ -13,29 +13,29 @@ import (
 )
 
 
-func New(key string, lengthkeyc int, expirysec int, isweb bool)(*AuthCode,error){
-	/*可以==0的是expireSec而不是lengthKeyC*/
-	if lengthkeyc>16||lengthkeyc<=0{
-		return nil,errors.New("must 0 < lenthKeyC <= 16")
+func New(key string, dynamickeylen int, expirysec int, isweb bool)*AuthCode{
+	if dynamickeylen>16{
+		panic("crash! go-authcode init, lenthKeyC > 16")
 	}
 	return &AuthCode{
-		key: 				key,
-		lengthKeyC:			lengthkeyc,
-		expirySec: 			expirysec,
-		isWeb: 				isweb,
-		transfor1:			[2][]byte{[]byte("*"), []byte("+")},
-		transfor2:			[2][]byte{[]byte("_"), []byte("/")},
-		bytesHandler:		bytes.NewBuffer([]byte{}),
-	},nil
+		Key: 					key,
+		DynamicKeyLen:			dynamickeylen,
+		ExpirySec: 				expirysec,
+		IsWeb: 					isweb,
+		
+		transfor1:				[2][]byte{[]byte("-"), []byte("+")},
+		transfor2:				[2][]byte{[]byte("_"), []byte("/")},
+		bytesHandler:			bytes.NewBuffer([]byte{}),
+	}
 }
 
 
 type AuthCode struct {
-	key 			string
-	lengthKeyC		int
-	expirySec 		int
+	Key 			string
+	DynamicKeyLen	int
+	ExpirySec 		int
+	IsWeb 			bool
 
-	isWeb 			bool
 	transfor1		[2][]byte
 	transfor2		[2][]byte
 	bytesHandler 	*bytes.Buffer
@@ -66,26 +66,36 @@ func (p *AuthCode)Encode(baits []byte,str string)([]byte,error){
 	raw :=append([]byte{},p.bytesHandler.Bytes()...)
 
 	/*拿到key的Md5*/
-	keyMd5 	:= Md5_String2Bytes(p.key)
+	keyMd5 	:= Md5_String2Bytes(p.Key)
 
 	/*拿到keyA、keyB*/
 	keyA 	:= Md5_Bytes2Bytes(keyMd5[:8])//正好一半
 	keyB 	:= Md5_Bytes2Bytes(keyMd5[8:])//正好另一半,实现真正完整的raw时会用到
 
 	/*拿到keyC，keyC来自时间戳，而不是key或raw*/
-	var keyC =make([]byte,8)
-	binary.LittleEndian.PutUint64(keyC,uint64(time.Now().Unix()))
-	p.bytesHandler.Reset()
-	p.bytesHandler.Write(Md5_Bytes2Bytes(keyC))
-	keyC = append([]byte{},p.bytesHandler.Bytes()[16-p.lengthKeyC:]...)//keyc其实就是一个时间戳的md5码片段
+	var keyDynamic =make([]byte,8)
+	if p.DynamicKeyLen != 0{
+		binary.LittleEndian.PutUint64(keyDynamic,uint64(time.Now().Unix()))
+		p.bytesHandler.Reset()
+		p.bytesHandler.Write(Md5_Bytes2Bytes(keyDynamic))
+		keyDynamic = append([]byte{},p.bytesHandler.Bytes()[16-p.DynamicKeyLen:]...)//keyc其实就是一个时间戳的md5码片段
+		/*由于需要去适应WEB环境，在这里需要确保keyDynamic内部不包含“/”与“+”*/
+		fmt.Println("keyDynamic danger:",keyDynamic)
+		keyDynamic =bytes.Replace(keyDynamic,[]byte{0x43},[]byte{0x45},-1)// + -> -
+		keyDynamic =bytes.Replace(keyDynamic,[]byte{0x47},[]byte{0x95},-1)// / -> _
+		fmt.Println("keyDynamic safe:",keyDynamic)
 
-	var expiry int 
-	if p.expirySec != 0{
-		expiry =p.expirySec + int(time.Now().Unix())
+	}else{
+		keyDynamic =nil
 	}
 
-	/*实现真正完整的raw*/
+	var expiry int 
+	if p.ExpirySec != 0{
+		expiry =p.ExpirySec + int(time.Now().Unix())
+	}
+	/*为raw添加时间戳*/
 	p.bytesHandler.Reset()
+	/*由于需要补位这里使用了基于string的操作*/
 	p.bytesHandler.WriteString(fmt.Sprintf("%010d",expiry))
 	p.bytesHandler.Write(Md5_Bytes2Bytes(append(raw,keyB...))[:8])
 	p.bytesHandler.Write(raw)
@@ -94,23 +104,39 @@ func (p *AuthCode)Encode(baits []byte,str string)([]byte,error){
 	/*拿到keyCrypt*/
 	p.bytesHandler.Reset()
 	p.bytesHandler.Write(keyA)//16
-	p.bytesHandler.Write(Md5_Bytes2Bytes(append(keyA,keyC...)))//16
+	//keyDynamic为空并不妨碍对他的打散以及append操作，keyA与keyDynamic共同生成keyCrypt
+	p.bytesHandler.Write(Md5_Bytes2Bytes(append(keyA,keyDynamic...)))//16
 	keyCrypt := append([]byte{},p.bytesHandler.Bytes()...)
 
-	/*康盛在php领域所做贡献,result的长度必然是256*/
+	/*康盛在php领域所做贡献,编码与解码共用同一套函数加密解密函数，此时raw只多了时间戳，而无论是在Encode中还是Decode中都需要预先生成keyCrypt*/
 	result :=p.kangSheng(raw,keyCrypt)   
-
-	/*先将result进行base编码*/
-	if result,err :=Base64_Bytes2Bytes(BASE64_ENCODE,result);err !=nil{
-		return nil,err
+	/*将result进行base编码，在这里需要进行IsWeb的匹配操作*/
+	if p.IsWeb{
+		if result,err :=Base64_WEB_Bytes2Bytes(BASE64_ENCODE,result);err !=nil{
+			return nil,err
+		}else{
+			/*再在头部添加keyDynamic，作用是当Decode时直接生成keyCrypt*/
+			p.bytesHandler.Reset()
+			p.bytesHandler.Write(keyDynamic)//这个keyDynmic的头部不会存在“/”、“+”，已被“_”,“-”代替
+			p.bytesHandler.Write(result)
+			/*返回数据*/
+			result =append([]byte{},p.bytesHandler.Bytes()...)
+			fmt.Println("result:",result)
+			return result,nil
+		}
 	}else{
-		/*再在头部添加KeyC，keyC只是个时间标识*/
-		p.bytesHandler.Reset()
-		p.bytesHandler.Write(keyC)
-		p.bytesHandler.Write(result)
-		/*返回数据*/
-		result =append([]byte{},p.bytesHandler.Bytes()...)
-		return result,nil
+		if result,err :=Base64_Bytes2Bytes(BASE64_ENCODE,result);err !=nil{
+			return nil,err
+		}else{
+			/*再在头部添加keyDynamic，作用是当Decode时直接生成keyCrypt*/
+			p.bytesHandler.Reset()
+			fmt.Println("keyDynamic in encode:",keyDynamic)
+			p.bytesHandler.Write(keyDynamic)
+			p.bytesHandler.Write(result)
+			/*返回数据*/
+			result =append([]byte{},p.bytesHandler.Bytes()...)
+			return result,nil
+		}
 	}
 }
 
@@ -123,40 +149,41 @@ func (p *AuthCode)Decode(baits []byte,str string)([]byte,error){
 	}
 
 	/*虽然golang拥有针对性的相关方法(base64.URLEncoding.EncodeToString)，但是还是感觉直接转化一下会方便一些*/
-	if p.isWeb{
+	// if p.IsWeb{
+	// 	if baits ==nil{
+	// 		str = strings.Replace(str, "-", "+", -1)
+	// 		str = strings.Replace(str, "_", "/", -1)
+	// 		p.bytesHandler.Reset()
+	// 		p.bytesHandler.WriteString(str)
+	// 	}
+
+	// 	if baits !=nil{
+	// 		/*需要加密的原始数据内有"*"或"+"，并不代表加密后的数据还会有"*"或"+"，在这里所操作的是加密后的数据*/
+	// 		baits = bytes.Replace(baits, []byte("-"), []byte("+"), -1)
+	// 		baits = bytes.Replace(baits, []byte("_"), []byte("/"), -1)
+	// 		p.bytesHandler.Reset()
+	// 		p.bytesHandler.Write(baits)
+	// 	}
+	// }else{
 		if baits ==nil{
-			str = strings.Replace(str, "*", "+", -1)
-			str = strings.Replace(str, "_", "/", -1)
 			p.bytesHandler.Reset()
 			p.bytesHandler.WriteString(str)
 		}
 
 		if baits !=nil{
-			/*需要加密的原始数据内有"*"或"+"，并不代表加密后的数据还会有"*"或"+"，在这里所操作的是加密后的数据*/
-			baits = bytes.Replace(baits, p.transfor1[0], p.transfor1[1], -1)
-			baits = bytes.Replace(baits, p.transfor2[0], p.transfor2[1], -1)
 			p.bytesHandler.Reset()
 			p.bytesHandler.Write(baits)
 		}
-	}else{
-		if baits ==nil{
-			p.bytesHandler.Reset()
-			p.bytesHandler.WriteString(str)
-		}
-
-		if baits !=nil{
-			p.bytesHandler.Reset()
-			p.bytesHandler.Write(baits)
-		}
-	}
+	//}
 
 	/*为了效率，尽可能基于字节序列操作*/
 	raw :=append([]byte{},p.bytesHandler.Bytes()...)
+	fmt.Println("raw:",raw)
 	/*排除非法数据*/
-	if (len(raw)<p.lengthKeyC){return nil,errors.New("authcode decode fail:len(raw)<lengthKeyC")}
+	if (len(raw)<p.DynamicKeyLen){return nil,errors.New("authcode decode fail:len(raw)<lengthKeyC")}
 
 	/*拿到key的Md5*/
-	keyMd5 	:= Md5_String2Bytes(p.key)
+	keyMd5 	:= Md5_String2Bytes(p.Key)
 
 	/*拿到keyA、keyB*/
 	keyA 	:= Md5_Bytes2Bytes(keyMd5[:8])//正好一半
@@ -164,32 +191,34 @@ func (p *AuthCode)Decode(baits []byte,str string)([]byte,error){
 
 	/*拿到keyC，keyC来自raw，而不是key*/
 	p.bytesHandler.Reset()
-	p.bytesHandler.Write(raw[:p.lengthKeyC])
-	keyC := append([]byte{},p.bytesHandler.Bytes()...)
-	
-	/*拿到raw的真正有价值部分*/
-	raw,err :=Base64_Bytes2Bytes(BASE64_DECODE,raw[p.lengthKeyC:])
+	/*如果p.DynamicKeyLen为0则会拿到空的切片，也就是[]，这里进行的操作会从raw的头部直接截取到keyDynamic*/
+	p.bytesHandler.Write(raw[:p.DynamicKeyLen])
+	keyDynamic := append([]byte{},p.bytesHandler.Bytes()...)
+	fmt.Println("keyDynamic in decode:",keyDynamic)
+
+	/*拿到raw不包含动态秘钥的部分并先进行一次Base64解码，如果动态秘钥长度为0那raw[p.DynamicKeyLen:]就会从头截到尾，动态秘钥不需Base64解码*/
+	raw,err :=Base64_WEB_Bytes2Bytes(BASE64_DECODE,raw[p.DynamicKeyLen:])
 	if err !=nil{return nil, err}
 
-	/*拿到keyCrypt*/
+	/*拿到keyCrypt，通过p.key拿到的keyA的方式与Encode相同，拿到keyDynamic的方式如上从raw截取而成的*/
 	p.bytesHandler.Reset()
 	p.bytesHandler.Write(keyA)
-	p.bytesHandler.Write(Md5_Bytes2Bytes(append(keyA,keyC...)))
+	p.bytesHandler.Write(Md5_Bytes2Bytes(append(keyA,keyDynamic...)))
 	keyCrypt :=append([]byte{},p.bytesHandler.Bytes()...)
 
-	/*康盛在php领域所做贡献,result的长度必然是256*/
+	/*康盛在php领域所做贡献,编码与解码共用同一套函数加密解密函数*/
 	result :=p.kangSheng(raw,keyCrypt)   
 	/*排除非法数据,如果为nil,golang也会使其归属于<10*/
 	if len(result)<10{return nil,errors.New("authcode decode fail: after kangsheng,result<10")}
 
-	/*检测数据是否过期,uint64最多只能容纳8个长度的bytes*/
+	/*检测数据是否过期，与keyDynamic不同，encode时所添加的时间戳被一并加密了，由于encode时需要补位所以decode这里同样不得不使用基于string的操作*/
 	timeStamp ,err := strconv.ParseInt(string(result[:10]),10,64)
 	if err !=nil{return nil,err}
 
 	/*在encode时如果expiry为0则会让前10位==0000000000，在此转化后即为整形0*/
 	if timeStamp != 0 && ((timeStamp-time.Now().Unix()) < 0){
 		return nil,errors.New(fmt.Sprintf("authcode decode fail: data timeout is %s,present time is %s,expiry_sec is %d",
-				  		 time.Unix(timeStamp, 0).Format("2006-01-02 15:04:05"),time.Unix(time.Now().Unix(),0).Format("2006-01-02 15:04:05"),p.expirySec))
+				  		 time.Unix(timeStamp, 0).Format("2006-01-02 15:04:05"),time.Unix(time.Now().Unix(),0).Format("2006-01-02 15:04:05"),p.ExpirySec))
 	}
 
 	/*authcode_decode最终的校验*/
@@ -258,7 +287,7 @@ func (p *AuthCode)kangSheng(raw []byte,cryptKey []byte)[]byte{
 
 //不知道存不存在安全性问题，不过还是实现了如下方法
 func (p *AuthCode)CloseSafe(){
-	p.key ="";		p.lengthKeyC =0;		p.expirySec =0
-	p.isWeb =false;	
+	p.Key ="";		p.DynamicKeyLen =0;		p.ExpirySec =0
+	p.IsWeb =false;	
 	p.bytesHandler.Reset();		p.bytesHandler=bytes.NewBuffer([]byte{})
 }
