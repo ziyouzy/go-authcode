@@ -8,7 +8,9 @@ authcode的golang实现，会处理好web传输的"/"与"+"问题，为提高性
 ***
 # How To Use
 
-     authcode import "github.com/ziyouzy/go-authcode"
+    import (
+        "github.com/ziyouzy/go-authcode"
+    )
     
     
     /*参数与意义*/
@@ -22,7 +24,7 @@ authcode的golang实现，会处理好web传输的"/"与"+"问题，为提高性
     expiry :=2
     // 数据过期时间单位为秒
     // 当此值为0时，则数据不会过期
-    ac ,_:=authcode.New(key,lenKeyC,expiry)
+    ac ,_:=go_authcode.New(key,lenKeyC,expiry)
     // encode ,_ :=ac.Encode(nil,"1234567890abcdefaaaaaa//***/+++____")
     encode ,_ :=ac.Encode([]byte("1234567890abcdefaaaaaa//***/+++____"),"")
     // Encode与Decode方法的入参方式借鉴了内置函数time.Unix(sec int64, nanosec int64).Format("2006-01-02 15:04:05")，其对于秒级时间戳与纳秒级时间戳的处理方式
