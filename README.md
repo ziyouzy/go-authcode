@@ -56,7 +56,6 @@ authcode的golang实现
 实现过程中查阅的相关的文章：  
 https://www.jb51.net/article/42457.htm  
 https://baike.baidu.com/item/base64/8545775?fr=aladdin  
-https://github.com/starten/go-authcode/blob/master/authcode.go  
 
 一个dart的实现：
 https://blog.jam00.com/article/info/68.html  
