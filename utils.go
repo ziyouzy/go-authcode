@@ -1,10 +1,10 @@
 package go_authcode
 
 import(
+	"fmt"
 	"unicode"
 	"regexp"
 	"encoding/base64"
-	"encoding/hex"
 	"crypto/md5"
 	"errors"
 )
@@ -127,34 +127,36 @@ func Base64_WEB_String2String(mode int,sRaw string) (string,error) {
 
 //生成32位md5字串
 func Md5_Bytes2Bytes(bRaw []byte) []byte {
-	h := md5.New()//h代表hash
-	h.Write(bRaw)
+//	h := md5.New()//h代表hash
+//	h.Write(bRaw)
 /**
 	通过翻阅源码可以看到他并不是对data进行校验计算
 	而是对hash.Hash对象内部存储的内容进行校验和
 	计算然后将其追加到data的后面形成一个新的byte切片
 	因此通常的使用方法就是将data置为nil
 */
-	return h.Sum(nil)
+	arr :=md5.Sum(bRaw)
+	return arr[:]
 }
 
 //生成32位md5字串
 func Md5_String2Bytes(sRaw string) []byte {
-	h := md5.New()//h代表hash
-	h.Write([]byte(sRaw))
-	return h.Sum(nil)
+	//h := md5.New()//h代表hash
+	//h.Write([]byte(sRaw))
+	arr :=md5.Sum([]byte(sRaw))
+	return arr[:]
 }
 
 func Md5_Bytes2Hexstring(bRaw []byte) string {
-	h := md5.New()//h代表hash
-	h.Write(bRaw)
-
-	return hex.EncodeToString(h.Sum(nil))
+	// h := md5.New()//h代表hash
+	// h.Write(bRaw)
+	arr :=md5.Sum(bRaw)
+	return fmt.Sprintf("%x",arr)
 }
 
 func Md5_String2Hexstring(sRaw string) string {
-	h := md5.New()
-	h.Write([]byte(sRaw))
-
-	return hex.EncodeToString(h.Sum(nil))
+	// h := md5.New()
+	// h.Write([]byte(sRaw))
+	arr :=md5.Sum([]byte(sRaw))
+	return fmt.Sprintf("%x",arr)
 }

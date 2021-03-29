@@ -34,7 +34,7 @@ authcode的golang实现
     expiry :=2
     // 数据过期时间单位为秒,当此值为0时，则数据不会过期 
     
-    ac ,_:=go_authcode.New(key,dynamickeylen,expiry)
+    ac ,:=go_authcode.New(key,dynamickeylen,expiry)
     
     encode ,_ :=ac.Encode([]byte("1234567890abcdefaaaaaa//***/+++____"),"")
     /** Encode与Decode方法的入参方式借鉴了内置函数
